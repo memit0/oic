@@ -7,7 +7,7 @@ import { OpenAI } from "openai"
 
 interface Config {
   apiKey: string;
-  apiProvider: "openai" | "gemini" | "anthropic";  // Added provider selection
+  apiProvider: "openai" | "gemini" | "anthropic" | "openrouter";  // Added provider selection
   extractionModel: string;
   solutionModel: string;
   debuggingModel: string;
@@ -58,7 +58,7 @@ export class ConfigHelper extends EventEmitter {
   /**
    * Validate and sanitize model selection to ensure only allowed models are used
    */
-  private sanitizeModelSelection(model: string, provider: "openai" | "gemini" | "anthropic"): string {
+  private sanitizeModelSelection(model: string, provider: "openai" | "gemini" | "anthropic" | "openrouter"): string {
     if (provider === "openai") {
       // Only allow gpt-4o and gpt-4o-mini for OpenAI
       const allowedModels = ['gpt-4o', 'gpt-4o-mini'];
@@ -83,6 +83,14 @@ export class ConfigHelper extends EventEmitter {
         return 'claude-3-7-sonnet-20250219';
       }
       return model;
+    } else if (provider === "openrouter") {
+      // Only allow specific OpenRouter models
+      const allowedModels = ['openai/gpt-4o', 'anthropic/claude-3.5-sonnet', 'google/gemini-pro-1.5'];
+      if (!allowedModels.includes(model)) {
+        console.warn(`Invalid OpenRouter model specified: ${model}. Using default model: openai/gpt-4o`);
+        return 'openai/gpt-4o';
+      }
+      return model;
     }
     // Default fallback
     return model;
@@ -95,7 +103,7 @@ export class ConfigHelper extends EventEmitter {
         const config = JSON.parse(configData);
         
         // Ensure apiProvider is a valid value
-        if (config.apiProvider !== "openai" && config.apiProvider !== "gemini"  && config.apiProvider !== "anthropic") {
+        if (config.apiProvider !== "openai" && config.apiProvider !== "gemini"  && config.apiProvider !== "anthropic" && config.apiProvider !== "openrouter") {
           config.apiProvider = "gemini"; // Default to Gemini if invalid
         }
         
@@ -153,7 +161,10 @@ export class ConfigHelper extends EventEmitter {
       // Auto-detect provider based on API key format if a new key is provided
       if (updates.apiKey && !updates.apiProvider) {
         // If API key starts with "sk-", it's likely an OpenAI key
-        if (updates.apiKey.trim().startsWith('sk-')) {
+        if (updates.apiKey.trim().startsWith('sk-or-')) {
+          provider = "openrouter";
+          console.log("Auto-detected OpenRouter API key format");
+        } else if (updates.apiKey.trim().startsWith('sk-')) {
           provider = "openai";
           console.log("Auto-detected OpenAI API key format");
         } else if (updates.apiKey.trim().startsWith('sk-ant-')) {
@@ -178,6 +189,10 @@ export class ConfigHelper extends EventEmitter {
           updates.extractionModel = "claude-3-7-sonnet-20250219";
           updates.solutionModel = "claude-3-7-sonnet-20250219";
           updates.debuggingModel = "claude-3-7-sonnet-20250219";
+        } else if (updates.apiProvider === "openrouter") {
+          updates.extractionModel = "openai/gpt-4o";
+          updates.solutionModel = "openai/gpt-4o";
+          updates.debuggingModel = "openai/gpt-4o";
         } else {
           updates.extractionModel = "gemini-2.0-flash";
           updates.solutionModel = "gemini-2.0-flash";
@@ -225,10 +240,12 @@ export class ConfigHelper extends EventEmitter {
   /**
    * Validate the API key format
    */
-  public isValidApiKeyFormat(apiKey: string, provider?: "openai" | "gemini" | "anthropic" ): boolean {
+  public isValidApiKeyFormat(apiKey: string, provider?: "openai" | "gemini" | "anthropic" | "openrouter" ): boolean {
     // If provider is not specified, attempt to auto-detect
     if (!provider) {
-      if (apiKey.trim().startsWith('sk-')) {
+      if (apiKey.trim().startsWith('sk-or-')) {
+        provider = "openrouter";
+      } else if (apiKey.trim().startsWith('sk-')) {
         if (apiKey.trim().startsWith('sk-ant-')) {
           provider = "anthropic";
         } else {
@@ -248,6 +265,9 @@ export class ConfigHelper extends EventEmitter {
     } else if (provider === "anthropic") {
       // Basic format validation for Anthropic API keys
       return /^sk-ant-[a-zA-Z0-9]{32,}$/.test(apiKey.trim());
+    } else if (provider === "openrouter") {
+      // Basic format validation for OpenRouter API keys
+      return /^sk-or-[a-zA-Z0-9]{32,}$/.test(apiKey.trim());
     }
     
     return false;
@@ -288,10 +308,13 @@ export class ConfigHelper extends EventEmitter {
   /**
    * Test API key with the selected provider
    */
-  public async testApiKey(apiKey: string, provider?: "openai" | "gemini" | "anthropic"): Promise<{valid: boolean, error?: string}> {
+  public async testApiKey(apiKey: string, provider?: "openai" | "gemini" | "anthropic" | "openrouter"): Promise<{valid: boolean, error?: string}> {
     // Auto-detect provider based on key format if not specified
     if (!provider) {
-      if (apiKey.trim().startsWith('sk-')) {
+      if (apiKey.trim().startsWith('sk-or-')) {
+        provider = "openrouter";
+        console.log("Auto-detected OpenRouter API key format for testing");
+      } else if (apiKey.trim().startsWith('sk-')) {
         if (apiKey.trim().startsWith('sk-ant-')) {
           provider = "anthropic";
           console.log("Auto-detected Anthropic API key format for testing");
@@ -311,6 +334,8 @@ export class ConfigHelper extends EventEmitter {
       return this.testGeminiKey(apiKey);
     } else if (provider === "anthropic") {
       return this.testAnthropicKey(apiKey);
+    } else if (provider === "openrouter") {
+      return this.testOpenRouterKey(apiKey);
     }
     
     return { valid: false, error: "Unknown API provider" };
@@ -388,6 +413,41 @@ export class ConfigHelper extends EventEmitter {
       let errorMessage = 'Unknown error validating Anthropic API key';
       
       if (error.message) {
+        errorMessage = `Error: ${error.message}`;
+      }
+      
+      return { valid: false, error: errorMessage };
+    }
+  }
+
+  /**
+   * Test OpenRouter API key
+   */
+  private async testOpenRouterKey(apiKey: string): Promise<{valid: boolean, error?: string}> {
+    try {
+      const openrouter = new OpenAI({
+        apiKey,
+        baseURL: "https://openrouter.ai/api/v1",
+        defaultHeaders: {
+          "HTTP-Referer": "https://github.com/your-repo",
+          "X-Title": "OIC - Online Interview Companion"
+        }
+      });
+      // Make a simple API call to test the key
+      await openrouter.models.list();
+      return { valid: true };
+    } catch (error: any) {
+      console.error('OpenRouter API key test failed:', error);
+      
+      let errorMessage = 'Unknown error validating OpenRouter API key';
+      
+      if (error.status === 401) {
+        errorMessage = 'Invalid API key. Please check your OpenRouter key and try again.';
+      } else if (error.status === 429) {
+        errorMessage = 'Rate limit exceeded. Your OpenRouter API key has reached its request limit or has insufficient quota.';
+      } else if (error.status === 500) {
+        errorMessage = 'OpenRouter server error. Please try again later.';
+      } else if (error.message) {
         errorMessage = `Error: ${error.message}`;
       }
       

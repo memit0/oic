@@ -1,30 +1,3 @@
-# CodeInterviewAssist
-
-> ## ⚠️ IMPORTANT NOTICE TO THE COMMUNITY ⚠️
-> 
-> **This is a free, open-source initiative - NOT a full-service product!**
-> 
-> There are numerous paid interview preparation tools charging hundreds of dollars for comprehensive features like live audio capture, automated answer generation, and more. This project is fundamentally different:
-> 
-> - This is a **small, non-profit, community-driven project** with zero financial incentive behind it
-> - The entire codebase is freely available for anyone to use, modify, or extend
-> - Want features like voice support? You're welcome to integrate tools like OpenAI's Whisper or other APIs
-> - New features should come through **community contributions** - it's unreasonable to expect a single maintainer to implement premium features for free
-> - The maintainer receives no portfolio benefit, monetary compensation, or recognition for this work
-> 
-> **Before submitting feature requests or expecting personalized support, please understand this project exists purely as a community resource.** If you value what's been created, the best way to show appreciation is by contributing code, documentation, or helping other users.
-
-> ## 🔑 API KEY INFORMATION - UPDATED
->
-> We have tested and confirmed that **both Gemini and OpenAI APIs work properly** with the current version. If you are experiencing issues with your API keys:
->
-> - Try deleting your API key entry from the config file located in your user data directory
-> - Log out and log back in to the application
-> - Check your API key dashboard to verify the key is active and has sufficient credits
-> - Ensure you're using the correct API key format (OpenAI keys start with "sk-")
->
-> The configuration file is stored at: `C:\Users\[USERNAME]\AppData\Roaming\interview-coder-v1\config.json` (on Windows) or `/Users/[USERNAME]/Library/Application Support/interview-coder-v1/config.json` (on macOS)
-
 ## Free, Open-Source AI-Powered Interview Preparation Tool
 
 This project provides a powerful alternative to premium coding interview platforms. It delivers the core functionality of paid interview preparation tools but in a free, open-source package. Using your own OpenAI API key, you get access to advanced features like AI-powered problem analysis, solution generation, and debugging assistance - all running locally on your machine.
