@@ -14,6 +14,7 @@ export const AudioRecorder: React.FC<AudioRecorderProps> = ({
   const [audioBlob, setAudioBlob] = useState<Blob | null>(null)
   const [transcription, setTranscription] = useState<string>('')
   const [answer, setAnswer] = useState<string>('')
+  const [audioFormat, setAudioFormat] = useState<string>('webm')
   
   const mediaRecorderRef = useRef<MediaRecorder | null>(null)
   const audioChunksRef = useRef<Blob[]>([])
@@ -29,8 +30,41 @@ export const AudioRecorder: React.FC<AudioRecorderProps> = ({
         } 
       })
       
+      // Try multiple audio formats in order of preference for OpenRouter compatibility
+      let mimeType = 'audio/webm;codecs=opus'
+      let fileExtension = 'webm'
+      
+      // Check for MP3 support first (best for OpenRouter)
+      if (MediaRecorder.isTypeSupported('audio/mp3')) {
+        mimeType = 'audio/mp3'
+        fileExtension = 'mp3'
+      }
+      // Then check for WAV support
+      else if (MediaRecorder.isTypeSupported('audio/wav')) {
+        mimeType = 'audio/wav'
+        fileExtension = 'wav'
+      }
+      // Check for other WAV variants
+      else if (MediaRecorder.isTypeSupported('audio/wave')) {
+        mimeType = 'audio/wave'
+        fileExtension = 'wav'
+      }
+      else if (MediaRecorder.isTypeSupported('audio/x-wav')) {
+        mimeType = 'audio/x-wav'
+        fileExtension = 'wav'
+      }
+      // Fallback to WebM (will be converted to WAV in backend)
+      else {
+        mimeType = 'audio/webm;codecs=opus'
+        fileExtension = 'webm'
+        console.log('Browser using WebM audio recording. Will be converted to WAV in backend.')
+        showToast('Info', 'Recording in WebM format. Will be converted to WAV for OpenRouter compatibility.', 'neutral')
+      }
+      
+      console.log(`Using audio format: ${mimeType} (${fileExtension})`)
+      
       const mediaRecorder = new MediaRecorder(stream, {
-        mimeType: 'audio/webm;codecs=opus'
+        mimeType: mimeType
       })
       
       mediaRecorderRef.current = mediaRecorder
@@ -43,8 +77,9 @@ export const AudioRecorder: React.FC<AudioRecorderProps> = ({
       }
       
       mediaRecorder.onstop = () => {
-        const audioBlob = new Blob(audioChunksRef.current, { type: 'audio/webm' })
+        const audioBlob = new Blob(audioChunksRef.current, { type: mimeType })
         setAudioBlob(audioBlob)
+        setAudioFormat(fileExtension)
         stream.getTracks().forEach(track => track.stop())
       }
       
@@ -75,8 +110,8 @@ export const AudioRecorder: React.FC<AudioRecorderProps> = ({
       // Convert blob to ArrayBuffer
       const arrayBuffer = await audioBlob.arrayBuffer()
       
-      // Call the transcription API
-      const transcriptionResponse = await window.electronAPI.transcribeAudio(arrayBuffer, 'recording.webm')
+      // Call the transcription API with the correct format
+      const transcriptionResponse = await window.electronAPI.transcribeAudio(arrayBuffer, `recording.${audioFormat}`)
       const transcribedText = transcriptionResponse.text
       
       setTranscription(transcribedText)
@@ -99,7 +134,7 @@ export const AudioRecorder: React.FC<AudioRecorderProps> = ({
     } finally {
       setIsProcessing(false)
     }
-  }, [audioBlob, onTranscriptionComplete, showToast])
+  }, [audioBlob, audioFormat, onTranscriptionComplete, showToast])
 
   const playRecording = useCallback(() => {
     if (audioBlob) {

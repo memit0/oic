@@ -4,6 +4,67 @@ import { ipcMain, shell, dialog } from "electron"
 import { randomBytes } from "crypto"
 import { IIpcHandlerDeps } from "./main"
 import { configHelper } from "./ConfigHelper"
+import ffmpeg from 'fluent-ffmpeg'
+import ffmpegStatic from 'ffmpeg-static'
+import * as fs from 'fs'
+import * as path from 'path'
+import * as os from 'os'
+
+// Set FFmpeg path to the bundled binary
+if (ffmpegStatic) {
+  ffmpeg.setFfmpegPath(ffmpegStatic)
+}
+
+// WebM to WAV conversion function using FFmpeg
+async function convertWebMToWAV(webmBuffer: Buffer): Promise<Buffer> {
+  return new Promise((resolve, reject) => {
+    const tempDir = os.tmpdir()
+    const inputPath = path.join(tempDir, `input_${Date.now()}.webm`)
+    const outputPath = path.join(tempDir, `output_${Date.now()}.wav`)
+    
+    try {
+      // Write WebM buffer to temporary file
+      fs.writeFileSync(inputPath, webmBuffer)
+      
+      // Convert WebM to WAV using FFmpeg
+      ffmpeg(inputPath)
+        .toFormat('wav')
+        .audioFrequency(16000)  // 16kHz sample rate for OpenRouter
+        .audioChannels(1)       // Mono audio
+        .audioBitrate('16k')    // 16-bit audio
+        .on('end', () => {
+          try {
+            // Read the converted WAV file
+            const wavBuffer = fs.readFileSync(outputPath)
+            
+            // Cleanup temporary files
+            try { fs.unlinkSync(inputPath) } catch {}
+            try { fs.unlinkSync(outputPath) } catch {}
+            
+            resolve(wavBuffer)
+          } catch (readError) {
+            reject(new Error(`Failed to read converted WAV file: ${readError.message}`))
+          }
+        })
+        .on('error', (err: any) => {
+          // Cleanup temporary files on error
+          try { fs.unlinkSync(inputPath) } catch {}
+          try { fs.unlinkSync(outputPath) } catch {}
+          
+          reject(new Error(`FFmpeg conversion failed: ${err.message}`))
+        })
+        .save(outputPath)
+        
+    } catch (error) {
+      // Cleanup on any error
+      try { fs.unlinkSync(inputPath) } catch {}
+      try { fs.unlinkSync(outputPath) } catch {}
+      
+      reject(new Error(`WebM to WAV conversion setup failed: ${error.message}`))
+    }
+  })
+}
+
 
 export function initializeIpcHandlers(deps: IIpcHandlerDeps): void {
   console.log("Initializing IPC handlers")
@@ -26,11 +87,11 @@ export function initializeIpcHandlers(deps: IIpcHandlerDeps): void {
     if (!configHelper.isValidApiKeyFormat(apiKey)) {
       return { 
         valid: false, 
-        error: "Invalid API key format. OpenAI API keys start with 'sk-'" 
+        error: "Invalid API key format. OpenRouter API keys start with 'sk-or-', OpenAI keys start with 'sk-'" 
       };
     }
     
-    // Then test the API key with OpenAI
+    // Then test the API key with the appropriate provider
     const result = await configHelper.testApiKey(apiKey);
     return result;
   })
@@ -354,14 +415,14 @@ export function initializeIpcHandlers(deps: IIpcHandlerDeps): void {
     try {
       // Check for API key before processing
       if (!configHelper.hasApiKey()) {
-        throw new Error("OpenRouter API key is required for audio transcription")
+        throw new Error("API key is required for audio transcription")
       }
 
       const config = configHelper.loadConfig()
       const apiKey = config.apiKey
 
       if (!apiKey) {
-        throw new Error("OpenRouter API key not found")
+        throw new Error("API key not found")
       }
 
       const fs = require('fs')
@@ -369,34 +430,97 @@ export function initializeIpcHandlers(deps: IIpcHandlerDeps): void {
       const os = require('os')
       const OpenAI = require('openai')
       
-      // Use OpenRouter API for Whisper
-      const openai = new OpenAI({
-        apiKey,
-        baseURL: "https://openrouter.ai/api/v1"
-      })
-
-      // Create a temporary file
-      const tempDir = os.tmpdir()
-      const tempFilePath = path.join(tempDir, `temp_audio_${Date.now()}_${filename}`)
+      // For OpenRouter, we need to convert WebM to WAV since OpenRouter only supports wav/mp3
+      // Determine the actual format we'll send (always WAV for WebM input)
+      const isWebM = filename.toLowerCase().includes('webm')
+      const isMp3 = filename.toLowerCase().endsWith('.mp3')
+      const audioFormat = isMp3 ? 'mp3' : 'wav'
       
-      // Write the buffer to a temporary file
-      fs.writeFileSync(tempFilePath, audioBuffer)
-
-      try {
-        // Use OpenRouter's Whisper API for transcription
-        const transcription = await openai.audio.transcriptions.create({
-          file: fs.createReadStream(tempFilePath),
-          model: "openai/whisper-1",
-          language: "en"
+      if (apiKey.startsWith('sk-or-')) {
+        // Use OpenRouter's multimodal audio API
+        const openai = new OpenAI({
+          apiKey,
+          baseURL: "https://openrouter.ai/api/v1",
+          defaultHeaders: {
+            "HTTP-Referer": "https://github.com/your-repo",
+            "X-Title": "OIC - Online Interview Companion"
+          }
         })
 
-        return { text: transcription.text }
-      } finally {
-        // Clean up the temporary file
+        let processedAudioBuffer = audioBuffer
+        let finalFormat = audioFormat
+
+        // If it's WebM, convert it to WAV using FFmpeg
+        if (isWebM) {
+          try {
+            console.log('Converting WebM to WAV using FFmpeg...')
+            processedAudioBuffer = await convertWebMToWAV(audioBuffer)
+            finalFormat = 'wav'
+            console.log('Successfully converted WebM to WAV')
+          } catch (conversionError) {
+            console.error('WebM to WAV conversion failed:', conversionError)
+            throw new Error(`Failed to convert WebM audio to WAV format: ${conversionError.message}. Please ensure FFmpeg is properly installed.`)
+          }
+        }
+
+        // Convert processed audio buffer to base64
+        const base64Audio = processedAudioBuffer.toString('base64')
+
+        // Use chat completions with audio input for transcription
+        const completion = await openai.chat.completions.create({
+          model: "openai/gpt-4o-audio-preview",
+          messages: [
+            {
+              role: "user",
+              content: [
+                {
+                  type: "text",
+                  text: "Please transcribe this audio file. Return only the transcribed text without any additional commentary."
+                },
+                {
+                  type: "input_audio",
+                  input_audio: {
+                    data: base64Audio,
+                    format: finalFormat
+                  }
+                }
+              ]
+            }
+          ],
+          max_tokens: 500,
+          temperature: 0.1
+        })
+
+        const transcribedText = completion.choices[0]?.message?.content || ""
+        return { text: transcribedText }
+        
+      } else {
+        // Use OpenAI directly for Whisper transcription
+        const openai = new OpenAI({ apiKey })
+
+        // Create a temporary file
+        const tempDir = os.tmpdir()
+        const tempFilePath = path.join(tempDir, `temp_audio_${Date.now()}_${filename}`)
+        
+        // Write the buffer to a temporary file
+        fs.writeFileSync(tempFilePath, audioBuffer)
+
         try {
-          fs.unlinkSync(tempFilePath)
-        } catch (cleanupError) {
-          console.warn("Failed to clean up temporary audio file:", cleanupError)
+          // Use OpenAI's Whisper for transcription
+          const transcription = await openai.audio.transcriptions.create({
+            file: fs.createReadStream(tempFilePath),
+            model: "whisper-1",
+            language: "en"
+          })
+
+          return { text: transcription.text }
+        } finally {
+          // Clean up the temporary file
+          try {
+            fs.unlinkSync(tempFilePath)
+          } catch (cleanupError) {
+            console.warn("Failed to clean up temporary audio file:", cleanupError)
+          }
         }
       }
     } catch (error) {
@@ -409,23 +533,38 @@ export function initializeIpcHandlers(deps: IIpcHandlerDeps): void {
     try {
       // Check for API key before processing
       if (!configHelper.hasApiKey()) {
-        throw new Error("OpenRouter API key is required for answer generation")
+        throw new Error("API key is required for answer generation")
       }
 
       const config = configHelper.loadConfig()
       const apiKey = config.apiKey
 
       if (!apiKey) {
-        throw new Error("OpenRouter API key not found")
+        throw new Error("API key not found")
       }
 
       const OpenAI = require('openai')
       
-      // Use OpenRouter API for chat completions
-      const openai = new OpenAI({
-        apiKey,
-        baseURL: "https://openrouter.ai/api/v1"
-      })
+      // Use OpenRouter for answer generation if available, otherwise use OpenAI
+      let openai
+      let modelToUse
+      
+      if (apiKey.startsWith('sk-or-')) {
+        // Use OpenRouter API for chat completions
+        openai = new OpenAI({
+          apiKey,
+          baseURL: "https://openrouter.ai/api/v1",
+          defaultHeaders: {
+            "HTTP-Referer": "https://github.com/your-repo",
+            "X-Title": "OIC - Online Interview Companion"
+          }
+        })
+        modelToUse = config.solutionModel || "openai/gpt-4o"
+      } else {
+        // Use OpenAI directly
+        openai = new OpenAI({ apiKey })
+        modelToUse = config.solutionModel || "gpt-4o"
+      }
 
       const prompt = `You are an expert interview coach helping someone prepare for behavioral interviews. 
 
@@ -439,9 +578,6 @@ Please provide a comprehensive, professional answer using the STAR method (Situa
 5. Be around 2-3 minutes when spoken (approximately 300-450 words)
 
 Provide only the answer, without any prefacing text like "Here's a good answer:" or similar.`
-
-      // Use a good OpenRouter model for behavioral questions
-      const modelToUse = config.solutionModel || "anthropic/claude-3.5-sonnet"
 
       const completion = await openai.chat.completions.create({
         model: modelToUse,
