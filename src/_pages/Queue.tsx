@@ -21,13 +21,15 @@ interface QueueProps {
   credits: number
   currentLanguage: string
   setLanguage: (language: string) => void
+  onTranscriptionComplete?: (transcription: string, answer: string) => void
 }
 
 const Queue: React.FC<QueueProps> = ({
   setView,
   credits,
   currentLanguage,
-  setLanguage
+  setLanguage,
+  onTranscriptionComplete
 }) => {
   const { showToast } = useToast()
 
@@ -135,7 +137,7 @@ const Queue: React.FC<QueueProps> = ({
   const handleOpenSettings = () => {
     window.electronAPI.openSettingsPortal();
   };
-  
+
   return (
     <div ref={contentRef} className={`bg-transparent w-1/2`}>
       <div className="px-4 py-3">
@@ -152,6 +154,7 @@ const Queue: React.FC<QueueProps> = ({
             credits={credits}
             currentLanguage={currentLanguage}
             setLanguage={setLanguage}
+            onTranscriptionComplete={onTranscriptionComplete}
           />
         </div>
       </div>

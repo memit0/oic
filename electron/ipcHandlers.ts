@@ -348,4 +348,123 @@ export function initializeIpcHandlers(deps: IIpcHandlerDeps): void {
       return { success: false, error: "Failed to delete last screenshot" }
     }
   })
+
+  // Audio processing handlers
+  ipcMain.handle("transcribe-audio", async (_event, audioBuffer: Buffer, filename: string) => {
+    try {
+      // Check for API key before processing
+      if (!configHelper.hasApiKey()) {
+        throw new Error("OpenRouter API key is required for audio transcription")
+      }
+
+      const config = configHelper.loadConfig()
+      const apiKey = config.apiKey
+
+      if (!apiKey) {
+        throw new Error("OpenRouter API key not found")
+      }
+
+      const fs = require('fs')
+      const path = require('path')
+      const os = require('os')
+      const OpenAI = require('openai')
+      
+      // Use OpenRouter API for Whisper
+      const openai = new OpenAI({
+        apiKey,
+        baseURL: "https://openrouter.ai/api/v1"
+      })
+
+      // Create a temporary file
+      const tempDir = os.tmpdir()
+      const tempFilePath = path.join(tempDir, `temp_audio_${Date.now()}_${filename}`)
+      
+      // Write the buffer to a temporary file
+      fs.writeFileSync(tempFilePath, audioBuffer)
+
+      try {
+        // Use OpenRouter's Whisper API for transcription
+        const transcription = await openai.audio.transcriptions.create({
+          file: fs.createReadStream(tempFilePath),
+          model: "openai/whisper-1",
+          language: "en"
+        })
+
+        return { text: transcription.text }
+      } finally {
+        // Clean up the temporary file
+        try {
+          fs.unlinkSync(tempFilePath)
+        } catch (cleanupError) {
+          console.warn("Failed to clean up temporary audio file:", cleanupError)
+        }
+      }
+    } catch (error) {
+      console.error("Error transcribing audio:", error)
+      throw error
+    }
+  })
+
+  ipcMain.handle("generate-behavioral-answer", async (_event, question: string) => {
+    try {
+      // Check for API key before processing
+      if (!configHelper.hasApiKey()) {
+        throw new Error("OpenRouter API key is required for answer generation")
+      }
+
+      const config = configHelper.loadConfig()
+      const apiKey = config.apiKey
+
+      if (!apiKey) {
+        throw new Error("OpenRouter API key not found")
+      }
+
+      const OpenAI = require('openai')
+      
+      // Use OpenRouter API for chat completions
+      const openai = new OpenAI({
+        apiKey,
+        baseURL: "https://openrouter.ai/api/v1"
+      })
+
+      const prompt = `You are an expert interview coach helping someone prepare for behavioral interviews. 
+
+The interviewer asked: "${question}"
+
+Please provide a comprehensive, professional answer using the STAR method (Situation, Task, Action, Result). The answer should:
+1. Be specific and detailed
+2. Show leadership, problem-solving, or relevant skills
+3. Include quantifiable results when possible
+4. Be authentic and conversational
+5. Be around 2-3 minutes when spoken (approximately 300-450 words)
+
+Provide only the answer, without any prefacing text like "Here's a good answer:" or similar.`
+
+      // Use a good OpenRouter model for behavioral questions
+      const modelToUse = config.solutionModel || "anthropic/claude-3.5-sonnet"
+
+      const completion = await openai.chat.completions.create({
+        model: modelToUse,
+        messages: [
+          {
+            role: "system",
+            content: "You are an expert interview coach specializing in behavioral interview questions. Provide detailed, professional answers using the STAR method."
+          },
+          {
+            role: "user",
+            content: prompt
+          }
+        ],
+        max_tokens: 600,
+        temperature: 0.7
+      })
+
+      const answer = completion.choices[0]?.message?.content || "I apologize, but I couldn't generate an answer for this question."
+
+      return { answer }
+    } catch (error) {
+      console.error("Error generating behavioral answer:", error)
+      throw error
+    }
+  })
 }

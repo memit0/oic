@@ -59,6 +59,22 @@ interface ElectronAPI {
   installUpdate: () => void
   onUpdateAvailable: (callback: (info: any) => void) => () => void
   onUpdateDownloaded: (callback: (info: any) => void) => () => void
+  
+  // Configuration methods
+  getConfig: () => Promise<any>
+  updateConfig: (config: { apiKey?: string; model?: string; language?: string; opacity?: number }) => Promise<void>
+  onShowSettings: (callback: () => void) => () => void
+  checkApiKey: () => Promise<boolean>
+  validateApiKey: (apiKey: string) => Promise<{ valid: boolean; error?: string }>
+  openSettingsPortal: () => Promise<{ success: boolean; error?: string }>
+  onApiKeyInvalid: (callback: () => void) => () => void
+  removeListener: (eventName: string, callback: (...args: any[]) => void) => void
+  onDeleteLastScreenshot: (callback: () => void) => () => void
+  deleteLastScreenshot: () => Promise<{ success: boolean; error?: string }>
+  
+  // Audio processing methods
+  transcribeAudio: (audioBuffer: ArrayBuffer, filename: string) => Promise<{ text: string }>
+  generateBehavioralAnswer: (question: string) => Promise<{ answer: string }>
 }
 
 interface Window {

@@ -236,7 +236,11 @@ const electronAPI = {
       ipcRenderer.removeListener("delete-last-screenshot", subscription)
     }
   },
-  deleteLastScreenshot: () => ipcRenderer.invoke("delete-last-screenshot")
+  deleteLastScreenshot: () => ipcRenderer.invoke("delete-last-screenshot"),
+  
+  // Audio processing methods
+  transcribeAudio: (audioBuffer: ArrayBuffer, filename: string) => ipcRenderer.invoke("transcribe-audio", Buffer.from(audioBuffer), filename),
+  generateBehavioralAnswer: (question: string) => ipcRenderer.invoke("generate-behavioral-answer", question)
 }
 
 // Before exposing the API
