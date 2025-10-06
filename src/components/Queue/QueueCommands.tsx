@@ -12,6 +12,7 @@ interface QueueCommandsProps {
   currentLanguage: string
   setLanguage: (language: string) => void
   onTranscriptionComplete?: (transcription: string, answer: string) => void
+  onClearResponse?: () => void
 }
 
 const QueueCommands: React.FC<QueueCommandsProps> = ({
@@ -20,7 +21,8 @@ const QueueCommands: React.FC<QueueCommandsProps> = ({
   credits,
   currentLanguage,
   setLanguage,
-  onTranscriptionComplete
+  onTranscriptionComplete,
+  onClearResponse
 }) => {
   const [isTooltipVisible, setIsTooltipVisible] = useState(false)
   const [isRecording, setIsRecording] = useState(false)
@@ -106,6 +108,20 @@ const QueueCommands: React.FC<QueueCommandsProps> = ({
       setIsProcessing(false);
     }
   }, [audioBlob, onTranscriptionComplete, showToast]);
+
+  // Listen for keyboard shortcut to generate answer
+  useEffect(() => {
+    const handleGenerateAnswer = () => {
+      if (audioBlob && !isRecording && !isProcessing) {
+        processAudio();
+      }
+    };
+
+    window.addEventListener('trigger-generate-answer', handleGenerateAnswer);
+    return () => {
+      window.removeEventListener('trigger-generate-answer', handleGenerateAnswer);
+    };
+  }, [audioBlob, isRecording, isProcessing, processAudio]);
 
   // Extract the repeated language selection logic into a separate function
   const extractLanguagesAndUpdate = (direction?: 'next' | 'prev') => {
@@ -573,6 +589,31 @@ const QueueCommands: React.FC<QueueCommandsProps> = ({
                           {screenshotCount > 0
                             ? "Remove the most recently taken screenshot."
                             : "No screenshots to delete."}
+                        </p>
+                      </div>
+
+                      {/* Clear Response Command */}
+                      <div
+                        className="cursor-pointer rounded px-2 py-1.5 hover:bg-white/10 transition-colors"
+                        onClick={() => {
+                          if (onClearResponse) {
+                            onClearResponse();
+                          }
+                        }}
+                      >
+                        <div className="flex items-center justify-between">
+                          <span className="truncate">Clear Response</span>
+                          <div className="flex gap-1 flex-shrink-0">
+                            <span className="bg-white/20 px-1.5 py-0.5 rounded text-[10px] leading-none">
+                              {COMMAND_KEY}
+                            </span>
+                            <span className="bg-white/20 px-1.5 py-0.5 rounded text-[10px] leading-none">
+                              K
+                            </span>
+                          </div>
+                        </div>
+                        <p className="text-[10px] leading-relaxed text-white/70 truncate mt-1">
+                          Clear the displayed transcription and answer.
                         </p>
                       </div>
                     </div>

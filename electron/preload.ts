@@ -241,6 +241,22 @@ const electronAPI = {
   // Audio processing methods
   transcribeAudio: (audioBuffer: ArrayBuffer, filename: string) => ipcRenderer.invoke("transcribe-audio", Buffer.from(audioBuffer), filename),
   generateBehavioralAnswer: (question: string) => ipcRenderer.invoke("generate-behavioral-answer", question),
+  
+  // Audio recording event listeners
+  onGenerateAnswer: (callback: () => void) => {
+    const subscription = () => callback()
+    ipcRenderer.on("generate-answer", subscription)
+    return () => {
+      ipcRenderer.removeListener("generate-answer", subscription)
+    }
+  },
+  onClearResponse: (callback: () => void) => {
+    const subscription = () => callback()
+    ipcRenderer.on("clear-response", subscription)
+    return () => {
+      ipcRenderer.removeListener("clear-response", subscription)
+    }
+  },
 }
 
 // Before exposing the API

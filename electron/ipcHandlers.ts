@@ -21,11 +21,11 @@ async function convertWebMToWAV(webmBuffer: Buffer): Promise<Buffer> {
     const tempDir = os.tmpdir()
     const inputPath = path.join(tempDir, `input_${Date.now()}.webm`)
     const outputPath = path.join(tempDir, `output_${Date.now()}.wav`)
-    
+
     try {
       // Write WebM buffer to temporary file
       fs.writeFileSync(inputPath, webmBuffer)
-      
+
       // Convert WebM to WAV using FFmpeg
       ffmpeg(inputPath)
         .toFormat('wav')
@@ -36,11 +36,11 @@ async function convertWebMToWAV(webmBuffer: Buffer): Promise<Buffer> {
           try {
             // Read the converted WAV file
             const wavBuffer = fs.readFileSync(outputPath)
-            
+
             // Cleanup temporary files
-            try { fs.unlinkSync(inputPath) } catch {}
-            try { fs.unlinkSync(outputPath) } catch {}
-            
+            try { fs.unlinkSync(inputPath) } catch { }
+            try { fs.unlinkSync(outputPath) } catch { }
+
             resolve(wavBuffer)
           } catch (readError) {
             reject(new Error(`Failed to read converted WAV file: ${readError.message}`))
@@ -48,18 +48,18 @@ async function convertWebMToWAV(webmBuffer: Buffer): Promise<Buffer> {
         })
         .on('error', (err: any) => {
           // Cleanup temporary files on error
-          try { fs.unlinkSync(inputPath) } catch {}
-          try { fs.unlinkSync(outputPath) } catch {}
-          
+          try { fs.unlinkSync(inputPath) } catch { }
+          try { fs.unlinkSync(outputPath) } catch { }
+
           reject(new Error(`FFmpeg conversion failed: ${err.message}`))
         })
         .save(outputPath)
-        
+
     } catch (error) {
       // Cleanup on any error
-      try { fs.unlinkSync(inputPath) } catch {}
-      try { fs.unlinkSync(outputPath) } catch {}
-      
+      try { fs.unlinkSync(inputPath) } catch { }
+      try { fs.unlinkSync(outputPath) } catch { }
+
       reject(new Error(`WebM to WAV conversion setup failed: ${error.message}`))
     }
   })
@@ -83,16 +83,16 @@ export function initializeIpcHandlers(deps: IIpcHandlerDeps): void {
   ipcMain.handle("check-api-key", () => {
     return configHelper.hasApiKey();
   })
-  
+
   ipcMain.handle("validate-api-key", async (_event, apiKey) => {
     // First check the format
     if (!configHelper.isValidApiKeyFormat(apiKey)) {
-      return { 
-        valid: false, 
-        error: "Invalid API key format. OpenRouter API keys start with 'sk-or-', OpenAI keys start with 'sk-'" 
+      return {
+        valid: false,
+        error: "Invalid API key format. OpenRouter API keys start with 'sk-or-', OpenAI keys start with 'sk-'"
       };
     }
-    
+
     // Then test the API key with the appropriate provider
     const result = await configHelper.testApiKey(apiKey);
     return result;
@@ -162,7 +162,7 @@ export function initializeIpcHandlers(deps: IIpcHandlerDeps): void {
       }
       return;
     }
-    
+
     await deps.processingHelper?.processScreenshots()
   })
 
@@ -250,7 +250,7 @@ export function initializeIpcHandlers(deps: IIpcHandlerDeps): void {
   ipcMain.handle("open-external-url", (event, url: string) => {
     shell.openExternal(url)
   })
-  
+
   // Open external URL handler
   ipcMain.handle("openLink", (event, url: string) => {
     try {
@@ -305,7 +305,7 @@ export function initializeIpcHandlers(deps: IIpcHandlerDeps): void {
         }
         return { success: false, error: "API key required" };
       }
-      
+
       await deps.processingHelper?.processScreenshots()
       return { success: true }
     } catch (error) {
@@ -381,30 +381,30 @@ export function initializeIpcHandlers(deps: IIpcHandlerDeps): void {
       return { error: "Failed to move window down" }
     }
   })
-  
+
   // Delete last screenshot handler
   ipcMain.handle("delete-last-screenshot", async () => {
     try {
-      const queue = deps.getView() === "queue" 
-        ? deps.getScreenshotQueue() 
+      const queue = deps.getView() === "queue"
+        ? deps.getScreenshotQueue()
         : deps.getExtraScreenshotQueue()
-      
+
       if (queue.length === 0) {
         return { success: false, error: "No screenshots to delete" }
       }
-      
+
       // Get the last screenshot in the queue
       const lastScreenshot = queue[queue.length - 1]
-      
+
       // Delete it
       const result = await deps.deleteScreenshot(lastScreenshot)
-      
+
       // Notify the renderer about the change
       const mainWindow = deps.getMainWindow()
       if (mainWindow && !mainWindow.isDestroyed()) {
         mainWindow.webContents.send("screenshot-deleted", { path: lastScreenshot })
       }
-      
+
       return result
     } catch (error) {
       console.error("Error deleting last screenshot:", error)
@@ -431,13 +431,13 @@ export function initializeIpcHandlers(deps: IIpcHandlerDeps): void {
       const path = require('path')
       const os = require('os')
       const OpenAI = require('openai')
-      
+
       // For OpenRouter, we need to convert WebM to WAV since OpenRouter only supports wav/mp3
       // Determine the actual format we'll send (always WAV for WebM input)
       const isWebM = filename.toLowerCase().includes('webm')
       const isMp3 = filename.toLowerCase().endsWith('.mp3')
       const audioFormat = isMp3 ? 'mp3' : 'wav'
-      
+
       if (apiKey.startsWith('sk-or-')) {
         // Use OpenRouter's multimodal audio API
         const openai = new OpenAI({
@@ -495,7 +495,7 @@ export function initializeIpcHandlers(deps: IIpcHandlerDeps): void {
 
         const transcribedText = completion.choices[0]?.message?.content || ""
         return { text: transcribedText }
-        
+
       } else {
         // Use OpenAI directly for Whisper transcription
         const openai = new OpenAI({ apiKey })
@@ -503,7 +503,7 @@ export function initializeIpcHandlers(deps: IIpcHandlerDeps): void {
         // Create a temporary file
         const tempDir = os.tmpdir()
         const tempFilePath = path.join(tempDir, `temp_audio_${Date.now()}_${filename}`)
-        
+
         // Write the buffer to a temporary file
         fs.writeFileSync(tempFilePath, audioBuffer)
 
@@ -535,7 +535,7 @@ export function initializeIpcHandlers(deps: IIpcHandlerDeps): void {
     try {
       console.log("\n" + "🎯 BEHAVIORAL ANSWER GENERATION")
       console.log("❓ Question:", question)
-      
+
       // Check for API key before processing
       if (!configHelper.hasApiKey()) {
         throw new Error("API key is required for answer generation")
@@ -549,11 +549,11 @@ export function initializeIpcHandlers(deps: IIpcHandlerDeps): void {
       }
 
       const OpenAI = require('openai')
-      
+
       // Use OpenRouter for answer generation if available, otherwise use OpenAI
       let openai
       let modelToUse
-      
+
       if (apiKey.startsWith('sk-or-')) {
         // Use OpenRouter API for chat completions
         openai = new OpenAI({
@@ -571,15 +571,22 @@ export function initializeIpcHandlers(deps: IIpcHandlerDeps): void {
         modelToUse = config.solutionModel || "gpt-4o"
       }
 
-      const prompt = `You are an expert interview coach helping someone prepare for behavioral interviews. 
+      const prompt = `You are an expert interview coach helping someone prepare for technical company interviews. 
 
 The interviewer asked: "${question}"
 
-Please provide a comprehensive, professional answer using the STAR method (Situation, Task, Action, Result). The answer should:
-1. Be specific and detailed
-2. Show leadership, problem-solving, or relevant skills
-3. Include quantifiable results when possible
-4. Be authentic and conversational
+Please provide a comprehensive, professional answer. Analyze the question type and respond appropriately:
+
+- For behavioral questions (e.g., "Tell me about a time when..."): Use the STAR method (Situation, Task, Action, Result) with specific examples
+- For technical questions: Provide clear, accurate explanations with relevant examples and best practices
+- For general questions (e.g., "Why do you want to work here?", "What are your strengths?"): Give thoughtful, authentic responses that demonstrate self-awareness and alignment with company values
+- For problem-solving questions: Walk through your thought process logically and systematically
+
+The answer should:
+1. Be specific and detailed with concrete examples
+2. Demonstrate technical competence, leadership, or relevant skills as appropriate
+3. Include quantifiable results or measurable outcomes when possible
+4. Be authentic, conversational, and professional
 5. Be around 2-3 minutes when spoken (approximately 300-450 words)
 
 Provide only the answer, without any prefacing text like "Here's a good answer:" or similar.`

@@ -143,6 +143,12 @@ const SubscribedApp: React.FC<SubscribedAppProps> = ({
     showToast('Success', 'Behavioral question answered successfully!', 'success')
   }
 
+  // Handle clearing transcription and answer display only
+  const handleClearResponse = () => {
+    setTranscription('')
+    setAnswer('')
+  }
+
   return (
     <div ref={containerRef} className="min-h-0">
       {/* Audio Results Display */}
@@ -174,6 +180,7 @@ const SubscribedApp: React.FC<SubscribedAppProps> = ({
           currentLanguage={currentLanguage}
           setLanguage={setLanguage}
           onTranscriptionComplete={handleTranscriptionComplete}
+          onClearResponse={handleClearResponse}
         />
       ) : view === "solutions" ? (
         <Solutions

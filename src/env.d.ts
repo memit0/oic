@@ -75,6 +75,8 @@ interface ElectronAPI {
   // Audio processing methods
   transcribeAudio: (audioBuffer: ArrayBuffer, filename: string) => Promise<{ text: string }>
   generateBehavioralAnswer: (question: string) => Promise<{ answer: string }>
+  onGenerateAnswer: (callback: () => void) => () => void
+  onClearResponse: (callback: () => void) => () => void
 }
 
 interface Window {
