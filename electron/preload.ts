@@ -240,7 +240,7 @@ const electronAPI = {
   
   // Audio processing methods
   transcribeAudio: (audioBuffer: ArrayBuffer, filename: string) => ipcRenderer.invoke("transcribe-audio", Buffer.from(audioBuffer), filename),
-  generateBehavioralAnswer: (question: string) => ipcRenderer.invoke("generate-behavioral-answer", question)
+  generateBehavioralAnswer: (question: string) => ipcRenderer.invoke("generate-behavioral-answer", question),
 }
 
 // Before exposing the API

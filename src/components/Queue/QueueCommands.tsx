@@ -34,33 +34,33 @@ const QueueCommands: React.FC<QueueCommandsProps> = ({
   // Audio recording functions
   const startRecording = useCallback(async () => {
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({ 
+      const stream = await navigator.mediaDevices.getUserMedia({
         audio: {
           echoCancellation: true,
           noiseSuppression: true,
           sampleRate: 16000
-        } 
+        }
       });
-      
+
       const mediaRecorder = new MediaRecorder(stream, {
         mimeType: 'audio/webm;codecs=opus'
       });
-      
+
       mediaRecorderRef.current = mediaRecorder;
       audioChunksRef.current = [];
-      
+
       mediaRecorder.ondataavailable = (event) => {
         if (event.data.size > 0) {
           audioChunksRef.current.push(event.data);
         }
       };
-      
+
       mediaRecorder.onstop = () => {
         const audioBlob = new Blob(audioChunksRef.current, { type: 'audio/webm' });
         setAudioBlob(audioBlob);
         stream.getTracks().forEach(track => track.stop());
       };
-      
+
       mediaRecorder.start(1000);
       setIsRecording(true);
       showToast('Recording', 'Audio recording started', 'success');
@@ -86,14 +86,14 @@ const QueueCommands: React.FC<QueueCommandsProps> = ({
 
     try {
       const arrayBuffer = await audioBlob.arrayBuffer();
-      
+
       const transcriptionResponse = await window.electronAPI.transcribeAudio(arrayBuffer, 'recording.webm');
       const transcribedText = transcriptionResponse.text;
-      
+
       if (transcribedText.trim()) {
         const answerResponse = await window.electronAPI.generateBehavioralAnswer(transcribedText);
         const generatedAnswer = answerResponse.answer;
-        
+
         onTranscriptionComplete?.(transcribedText, generatedAnswer);
         showToast('Success', 'Audio processed and answer generated!', 'success');
       } else {
@@ -114,16 +114,16 @@ const QueueCommands: React.FC<QueueCommandsProps> = ({
     hiddenRenderContainer.style.position = 'absolute';
     hiddenRenderContainer.style.left = '-9999px';
     document.body.appendChild(hiddenRenderContainer);
-    
+
     // Create a root and render the LanguageSelector temporarily
     const root = createRoot(hiddenRenderContainer);
     root.render(
-      <LanguageSelector 
-        currentLanguage={currentLanguage} 
-        setLanguage={() => {}}
+      <LanguageSelector
+        currentLanguage={currentLanguage}
+        setLanguage={() => { }}
       />
     );
-    
+
     // Use a small delay to ensure the component has rendered
     // 50ms is generally enough for React to complete a render cycle
     setTimeout(() => {
@@ -132,11 +132,11 @@ const QueueCommands: React.FC<QueueCommandsProps> = ({
       if (selectElement) {
         const options = Array.from(selectElement.options);
         const values = options.map(opt => opt.value);
-        
+
         // Find current language index
         const currentIndex = values.indexOf(currentLanguage);
         let newIndex = currentIndex;
-        
+
         if (direction === 'prev') {
           // Go to previous language
           newIndex = (currentIndex - 1 + values.length) % values.length;
@@ -144,13 +144,13 @@ const QueueCommands: React.FC<QueueCommandsProps> = ({
           // Default to next language
           newIndex = (currentIndex + 1) % values.length;
         }
-        
+
         if (newIndex !== currentIndex) {
           setLanguage(values[newIndex]);
           window.electronAPI.updateConfig({ language: values[newIndex] });
         }
       }
-      
+
       // Clean up
       root.unmount();
       document.body.removeChild(hiddenRenderContainer);
@@ -170,14 +170,14 @@ const QueueCommands: React.FC<QueueCommandsProps> = ({
       // Clear any local storage or electron-specific data
       localStorage.clear();
       sessionStorage.clear();
-      
+
       // Clear the API key in the configuration
       await window.electronAPI.updateConfig({
         apiKey: '',
       });
-      
+
       showToast('Success', 'Logged out successfully', 'success');
-      
+
       // Reload the app after a short delay
       setTimeout(() => {
         window.location.reload();
@@ -220,14 +220,14 @@ const QueueCommands: React.FC<QueueCommandsProps> = ({
               {screenshotCount === 0
                 ? "Take first screenshot"
                 : screenshotCount === 1
-                ? "Take second screenshot"
-                : screenshotCount === 2
-                ? "Take third screenshot"
-                : screenshotCount === 3
-                ? "Take fourth screenshot"
-                : screenshotCount === 4
-                ? "Take fifth screenshot"
-                : "Next will replace first screenshot"}
+                  ? "Take second screenshot"
+                  : screenshotCount === 2
+                    ? "Take third screenshot"
+                    : screenshotCount === 3
+                      ? "Take fourth screenshot"
+                      : screenshotCount === 4
+                        ? "Take fifth screenshot"
+                        : "Next will replace first screenshot"}
             </span>
             <div className="flex gap-1">
               <button className="bg-white/10 rounded-md px-1.5 py-1 text-[11px] leading-none text-white/70">
@@ -242,9 +242,8 @@ const QueueCommands: React.FC<QueueCommandsProps> = ({
           {/* Solve Command */}
           {screenshotCount > 0 && (
             <div
-              className={`flex flex-col cursor-pointer rounded px-2 py-1.5 hover:bg-white/10 transition-colors ${
-                credits <= 0 ? "opacity-50 cursor-not-allowed" : ""
-              }`}
+              className={`flex flex-col cursor-pointer rounded px-2 py-1.5 hover:bg-white/10 transition-colors ${credits <= 0 ? "opacity-50 cursor-not-allowed" : ""
+                }`}
               onClick={async () => {
 
                 try {
@@ -447,9 +446,8 @@ const QueueCommands: React.FC<QueueCommandsProps> = ({
                       {/* Generate Answer Command */}
                       {audioBlob && !isRecording && (
                         <div
-                          className={`cursor-pointer rounded px-2 py-1.5 hover:bg-white/10 transition-colors ${
-                            isProcessing ? "opacity-50 cursor-not-allowed" : ""
-                          }`}
+                          className={`cursor-pointer rounded px-2 py-1.5 hover:bg-white/10 transition-colors ${isProcessing ? "opacity-50 cursor-not-allowed" : ""
+                            }`}
                           onClick={processAudio}
                         >
                           <div className="flex items-center justify-between">
@@ -466,8 +464,8 @@ const QueueCommands: React.FC<QueueCommandsProps> = ({
                             </div>
                           </div>
                           <p className="text-[10px] leading-relaxed text-white/70 truncate mt-1">
-                            {isProcessing 
-                              ? "Transcribing and generating answer..." 
+                            {isProcessing
+                              ? "Transcribing and generating answer..."
                               : "Generate behavioral interview answer."
                             }
                           </p>
@@ -476,11 +474,10 @@ const QueueCommands: React.FC<QueueCommandsProps> = ({
 
                       {/* Solve Command */}
                       <div
-                        className={`cursor-pointer rounded px-2 py-1.5 hover:bg-white/10 transition-colors ${
-                          screenshotCount > 0
-                            ? ""
-                            : "opacity-50 cursor-not-allowed"
-                        }`}
+                        className={`cursor-pointer rounded px-2 py-1.5 hover:bg-white/10 transition-colors ${screenshotCount > 0
+                          ? ""
+                          : "opacity-50 cursor-not-allowed"
+                          }`}
                         onClick={async () => {
                           if (screenshotCount === 0) return
 
@@ -528,17 +525,16 @@ const QueueCommands: React.FC<QueueCommandsProps> = ({
                             : "Take a screenshot first to generate a solution."}
                         </p>
                       </div>
-                      
+
                       {/* Delete Last Screenshot Command */}
                       <div
-                        className={`cursor-pointer rounded px-2 py-1.5 hover:bg-white/10 transition-colors ${
-                          screenshotCount > 0
-                            ? ""
-                            : "opacity-50 cursor-not-allowed"
-                        }`}
+                        className={`cursor-pointer rounded px-2 py-1.5 hover:bg-white/10 transition-colors ${screenshotCount > 0
+                          ? ""
+                          : "opacity-50 cursor-not-allowed"
+                          }`}
                         onClick={async () => {
                           if (screenshotCount === 0) return
-                          
+
                           try {
                             const result = await window.electronAPI.deleteLastScreenshot()
                             if (!result.success) {
@@ -585,7 +581,7 @@ const QueueCommands: React.FC<QueueCommandsProps> = ({
                     <div className="pt-3 mt-3 border-t border-white/10">
                       {/* Simplified Language Selector */}
                       <div className="mb-3 px-2">
-                        <div 
+                        <div
                           className="flex items-center justify-between cursor-pointer hover:bg-white/10 rounded px-2 py-1 transition-colors"
                           onClick={() => extractLanguagesAndUpdate('next')}
                           tabIndex={0}
@@ -602,7 +598,7 @@ const QueueCommands: React.FC<QueueCommandsProps> = ({
                             <span className="text-[11px] text-white/90">{currentLanguage}</span>
                             <div className="text-white/40 text-[8px]">
                               <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="w-3 h-3">
-                                <path d="M7 13l5 5 5-5M7 6l5 5 5-5"/>
+                                <path d="M7 13l5 5 5-5M7 6l5 5 5-5" />
                               </svg>
                             </div>
                           </div>

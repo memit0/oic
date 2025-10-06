@@ -67,7 +67,9 @@ async function convertWebMToWAV(webmBuffer: Buffer): Promise<Buffer> {
 
 
 export function initializeIpcHandlers(deps: IIpcHandlerDeps): void {
-  console.log("Initializing IPC handlers")
+  console.log("\n" + "🚀 INITIALIZING IPC HANDLERS")
+  console.log("🎤 Audio processing functionality enabled")
+  console.log("=".repeat(50))
 
   // Configuration handlers
   ipcMain.handle("get-config", () => {
@@ -531,6 +533,9 @@ export function initializeIpcHandlers(deps: IIpcHandlerDeps): void {
 
   ipcMain.handle("generate-behavioral-answer", async (_event, question: string) => {
     try {
+      console.log("\n" + "🎯 BEHAVIORAL ANSWER GENERATION")
+      console.log("❓ Question:", question)
+      
       // Check for API key before processing
       if (!configHelper.hasApiKey()) {
         throw new Error("API key is required for answer generation")
@@ -578,6 +583,13 @@ Please provide a comprehensive, professional answer using the STAR method (Situa
 5. Be around 2-3 minutes when spoken (approximately 300-450 words)
 
 Provide only the answer, without any prefacing text like "Here's a good answer:" or similar.`
+
+      console.log("\n" + "🤖 FULL PROMPT BEING SENT TO AI")
+      console.log("─".repeat(60))
+      console.log(prompt)
+      console.log("─".repeat(60))
+      console.log("🚀 Sending to AI model:", modelToUse)
+      console.log("=".repeat(50) + "\n")
 
       const completion = await openai.chat.completions.create({
         model: modelToUse,
