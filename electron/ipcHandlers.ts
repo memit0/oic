@@ -4,9 +4,72 @@ import { ipcMain, shell, dialog } from "electron"
 import { randomBytes } from "crypto"
 import { IIpcHandlerDeps } from "./main"
 import { configHelper } from "./ConfigHelper"
+import ffmpeg from 'fluent-ffmpeg'
+import ffmpegStatic from 'ffmpeg-static'
+import * as fs from 'fs'
+import * as path from 'path'
+import * as os from 'os'
+
+// Set FFmpeg path to the bundled binary
+if (ffmpegStatic) {
+  ffmpeg.setFfmpegPath(ffmpegStatic)
+}
+
+// WebM to WAV conversion function using FFmpeg
+async function convertWebMToWAV(webmBuffer: Buffer): Promise<Buffer> {
+  return new Promise((resolve, reject) => {
+    const tempDir = os.tmpdir()
+    const inputPath = path.join(tempDir, `input_${Date.now()}.webm`)
+    const outputPath = path.join(tempDir, `output_${Date.now()}.wav`)
+
+    try {
+      // Write WebM buffer to temporary file
+      fs.writeFileSync(inputPath, webmBuffer)
+
+      // Convert WebM to WAV using FFmpeg
+      ffmpeg(inputPath)
+        .toFormat('wav')
+        .audioFrequency(16000)  // 16kHz sample rate for OpenRouter
+        .audioChannels(1)       // Mono audio
+        .audioBitrate('16k')    // 16-bit audio
+        .on('end', () => {
+          try {
+            // Read the converted WAV file
+            const wavBuffer = fs.readFileSync(outputPath)
+
+            // Cleanup temporary files
+            try { fs.unlinkSync(inputPath) } catch { }
+            try { fs.unlinkSync(outputPath) } catch { }
+
+            resolve(wavBuffer)
+          } catch (readError) {
+            reject(new Error(`Failed to read converted WAV file: ${readError.message}`))
+          }
+        })
+        .on('error', (err: any) => {
+          // Cleanup temporary files on error
+          try { fs.unlinkSync(inputPath) } catch { }
+          try { fs.unlinkSync(outputPath) } catch { }
+
+          reject(new Error(`FFmpeg conversion failed: ${err.message}`))
+        })
+        .save(outputPath)
+
+    } catch (error) {
+      // Cleanup on any error
+      try { fs.unlinkSync(inputPath) } catch { }
+      try { fs.unlinkSync(outputPath) } catch { }
+
+      reject(new Error(`WebM to WAV conversion setup failed: ${error.message}`))
+    }
+  })
+}
+
 
 export function initializeIpcHandlers(deps: IIpcHandlerDeps): void {
-  console.log("Initializing IPC handlers")
+  console.log("\n" + "🚀 INITIALIZING IPC HANDLERS")
+  console.log("🎤 Audio processing functionality enabled")
+  console.log("=".repeat(50))
 
   // Configuration handlers
   ipcMain.handle("get-config", () => {
@@ -20,17 +83,17 @@ export function initializeIpcHandlers(deps: IIpcHandlerDeps): void {
   ipcMain.handle("check-api-key", () => {
     return configHelper.hasApiKey();
   })
-  
+
   ipcMain.handle("validate-api-key", async (_event, apiKey) => {
     // First check the format
     if (!configHelper.isValidApiKeyFormat(apiKey)) {
-      return { 
-        valid: false, 
-        error: "Invalid API key format. OpenAI API keys start with 'sk-'" 
+      return {
+        valid: false,
+        error: "Invalid API key format. OpenRouter API keys start with 'sk-or-', OpenAI keys start with 'sk-'"
       };
     }
-    
-    // Then test the API key with OpenAI
+
+    // Then test the API key with the appropriate provider
     const result = await configHelper.testApiKey(apiKey);
     return result;
   })
@@ -99,7 +162,7 @@ export function initializeIpcHandlers(deps: IIpcHandlerDeps): void {
       }
       return;
     }
-    
+
     await deps.processingHelper?.processScreenshots()
   })
 
@@ -187,7 +250,7 @@ export function initializeIpcHandlers(deps: IIpcHandlerDeps): void {
   ipcMain.handle("open-external-url", (event, url: string) => {
     shell.openExternal(url)
   })
-  
+
   // Open external URL handler
   ipcMain.handle("openLink", (event, url: string) => {
     try {
@@ -242,7 +305,7 @@ export function initializeIpcHandlers(deps: IIpcHandlerDeps): void {
         }
         return { success: false, error: "API key required" };
       }
-      
+
       await deps.processingHelper?.processScreenshots()
       return { success: true }
     } catch (error) {
@@ -318,34 +381,245 @@ export function initializeIpcHandlers(deps: IIpcHandlerDeps): void {
       return { error: "Failed to move window down" }
     }
   })
-  
+
   // Delete last screenshot handler
   ipcMain.handle("delete-last-screenshot", async () => {
     try {
-      const queue = deps.getView() === "queue" 
-        ? deps.getScreenshotQueue() 
+      const queue = deps.getView() === "queue"
+        ? deps.getScreenshotQueue()
         : deps.getExtraScreenshotQueue()
-      
+
       if (queue.length === 0) {
         return { success: false, error: "No screenshots to delete" }
       }
-      
+
       // Get the last screenshot in the queue
       const lastScreenshot = queue[queue.length - 1]
-      
+
       // Delete it
       const result = await deps.deleteScreenshot(lastScreenshot)
-      
+
       // Notify the renderer about the change
       const mainWindow = deps.getMainWindow()
       if (mainWindow && !mainWindow.isDestroyed()) {
         mainWindow.webContents.send("screenshot-deleted", { path: lastScreenshot })
       }
-      
+
       return result
     } catch (error) {
       console.error("Error deleting last screenshot:", error)
       return { success: false, error: "Failed to delete last screenshot" }
+    }
+  })
+
+  // Audio processing handlers
+  ipcMain.handle("transcribe-audio", async (_event, audioBuffer: Buffer, filename: string) => {
+    try {
+      // Check for API key before processing
+      if (!configHelper.hasApiKey()) {
+        throw new Error("API key is required for audio transcription")
+      }
+
+      const config = configHelper.loadConfig()
+      const apiKey = config.apiKey
+
+      if (!apiKey) {
+        throw new Error("API key not found")
+      }
+
+      const fs = require('fs')
+      const path = require('path')
+      const os = require('os')
+      const OpenAI = require('openai')
+
+      // For OpenRouter, we need to convert WebM to WAV since OpenRouter only supports wav/mp3
+      // Determine the actual format we'll send (always WAV for WebM input)
+      const isWebM = filename.toLowerCase().includes('webm')
+      const isMp3 = filename.toLowerCase().endsWith('.mp3')
+      const audioFormat = isMp3 ? 'mp3' : 'wav'
+
+      if (apiKey.startsWith('sk-or-')) {
+        // Use OpenRouter's multimodal audio API
+        const openai = new OpenAI({
+          apiKey,
+          baseURL: "https://openrouter.ai/api/v1",
+          defaultHeaders: {
+            "HTTP-Referer": "https://github.com/your-repo",
+            "X-Title": "OIC - Online Interview Companion"
+          }
+        })
+
+        let processedAudioBuffer = audioBuffer
+        let finalFormat = audioFormat
+
+        // If it's WebM, convert it to WAV using FFmpeg
+        if (isWebM) {
+          try {
+            console.log('Converting WebM to WAV using FFmpeg...')
+            processedAudioBuffer = await convertWebMToWAV(audioBuffer)
+            finalFormat = 'wav'
+            console.log('Successfully converted WebM to WAV')
+          } catch (conversionError) {
+            console.error('WebM to WAV conversion failed:', conversionError)
+            throw new Error(`Failed to convert WebM audio to WAV format: ${conversionError.message}. Please ensure FFmpeg is properly installed.`)
+          }
+        }
+
+        // Convert processed audio buffer to base64
+        const base64Audio = processedAudioBuffer.toString('base64')
+
+        // Use chat completions with audio input for transcription
+        const completion = await openai.chat.completions.create({
+          model: "openai/gpt-4o-audio-preview",
+          messages: [
+            {
+              role: "user",
+              content: [
+                {
+                  type: "text",
+                  text: "Please transcribe this audio file. Return only the transcribed text without any additional commentary."
+                },
+                {
+                  type: "input_audio",
+                  input_audio: {
+                    data: base64Audio,
+                    format: finalFormat
+                  }
+                }
+              ]
+            }
+          ],
+          max_tokens: 500,
+          temperature: 0.1
+        })
+
+        const transcribedText = completion.choices[0]?.message?.content || ""
+        return { text: transcribedText }
+
+      } else {
+        // Use OpenAI directly for Whisper transcription
+        const openai = new OpenAI({ apiKey })
+
+        // Create a temporary file
+        const tempDir = os.tmpdir()
+        const tempFilePath = path.join(tempDir, `temp_audio_${Date.now()}_${filename}`)
+
+        // Write the buffer to a temporary file
+        fs.writeFileSync(tempFilePath, audioBuffer)
+
+        try {
+          // Use OpenAI's Whisper for transcription
+          const transcription = await openai.audio.transcriptions.create({
+            file: fs.createReadStream(tempFilePath),
+            model: "whisper-1",
+            language: "en"
+          })
+
+          return { text: transcription.text }
+        } finally {
+          // Clean up the temporary file
+          try {
+            fs.unlinkSync(tempFilePath)
+          } catch (cleanupError) {
+            console.warn("Failed to clean up temporary audio file:", cleanupError)
+          }
+        }
+      }
+    } catch (error) {
+      console.error("Error transcribing audio:", error)
+      throw error
+    }
+  })
+
+  ipcMain.handle("generate-behavioral-answer", async (_event, question: string) => {
+    try {
+      console.log("\n" + "🎯 BEHAVIORAL ANSWER GENERATION")
+      console.log("❓ Question:", question)
+
+      // Check for API key before processing
+      if (!configHelper.hasApiKey()) {
+        throw new Error("API key is required for answer generation")
+      }
+
+      const config = configHelper.loadConfig()
+      const apiKey = config.apiKey
+
+      if (!apiKey) {
+        throw new Error("API key not found")
+      }
+
+      const OpenAI = require('openai')
+
+      // Use OpenRouter for answer generation if available, otherwise use OpenAI
+      let openai
+      let modelToUse
+
+      if (apiKey.startsWith('sk-or-')) {
+        // Use OpenRouter API for chat completions
+        openai = new OpenAI({
+          apiKey,
+          baseURL: "https://openrouter.ai/api/v1",
+          defaultHeaders: {
+            "HTTP-Referer": "https://github.com/your-repo",
+            "X-Title": "OIC - Online Interview Companion"
+          }
+        })
+        modelToUse = config.solutionModel || "openai/gpt-4o"
+      } else {
+        // Use OpenAI directly
+        openai = new OpenAI({ apiKey })
+        modelToUse = config.solutionModel || "gpt-4o"
+      }
+
+      const prompt = `You are an expert interview coach helping someone prepare for technical company interviews. 
+
+The interviewer asked: "${question}"
+
+Please provide a comprehensive, professional answer. Analyze the question type and respond appropriately:
+
+- For behavioral questions (e.g., "Tell me about a time when..."): Use the STAR method (Situation, Task, Action, Result) with specific examples
+- For technical questions: Provide clear, accurate explanations with relevant examples and best practices
+- For general questions (e.g., "Why do you want to work here?", "What are your strengths?"): Give thoughtful, authentic responses that demonstrate self-awareness and alignment with company values
+- For problem-solving questions: Walk through your thought process logically and systematically
+
+The answer should:
+1. Be specific and detailed with concrete examples
+2. Demonstrate technical competence, leadership, or relevant skills as appropriate
+3. Include quantifiable results or measurable outcomes when possible
+4. Be authentic, conversational, and professional
+5. Be around 2-3 minutes when spoken (approximately 300-450 words)
+
+Provide only the answer, without any prefacing text like "Here's a good answer:" or similar.`
+
+      console.log("\n" + "🤖 FULL PROMPT BEING SENT TO AI")
+      console.log("─".repeat(60))
+      console.log(prompt)
+      console.log("─".repeat(60))
+      console.log("🚀 Sending to AI model:", modelToUse)
+      console.log("=".repeat(50) + "\n")
+
+      const completion = await openai.chat.completions.create({
+        model: modelToUse,
+        messages: [
+          {
+            role: "system",
+            content: "You are an expert interview coach specializing in behavioral interview questions. Provide detailed, professional answers using the STAR method."
+          },
+          {
+            role: "user",
+            content: prompt
+          }
+        ],
+        max_tokens: 600,
+        temperature: 0.7
+      })
+
+      const answer = completion.choices[0]?.message?.content || "I apologize, but I couldn't generate an answer for this question."
+
+      return { answer }
+    } catch (error) {
+      console.error("Error generating behavioral answer:", error)
+      throw error
     }
   })
 }

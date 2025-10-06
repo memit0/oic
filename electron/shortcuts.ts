@@ -159,6 +159,24 @@ export class ShortcutsHelper {
       }
     })
     
+    // Generate answer from recording shortcut
+    globalShortcut.register("CommandOrControl+G", () => {
+      console.log("Command/Ctrl + G pressed. Generating answer from recording.")
+      const mainWindow = this.deps.getMainWindow()
+      if (mainWindow) {
+        mainWindow.webContents.send("generate-answer")
+      }
+    })
+    
+    // Clear response shortcut
+    globalShortcut.register("CommandOrControl+K", () => {
+      console.log("Command/Ctrl + K pressed. Clearing response.")
+      const mainWindow = this.deps.getMainWindow()
+      if (mainWindow) {
+        mainWindow.webContents.send("clear-response")
+      }
+    })
+    
     // Unregister shortcuts when quitting
     app.on("will-quit", () => {
       globalShortcut.unregisterAll()

@@ -21,13 +21,17 @@ interface QueueProps {
   credits: number
   currentLanguage: string
   setLanguage: (language: string) => void
+  onTranscriptionComplete?: (transcription: string, answer: string) => void
+  onClearResponse?: () => void
 }
 
 const Queue: React.FC<QueueProps> = ({
   setView,
   credits,
   currentLanguage,
-  setLanguage
+  setLanguage,
+  onTranscriptionComplete,
+  onClearResponse
 }) => {
   const { showToast } = useToast()
 
@@ -118,6 +122,18 @@ const Queue: React.FC<QueueProps> = ({
           "neutral"
         )
       }),
+      // Audio recording keyboard shortcuts
+      window.electronAPI.onGenerateAnswer(() => {
+        // Trigger generate answer - will be handled by QueueCommands
+        const event = new CustomEvent('trigger-generate-answer');
+        window.dispatchEvent(event);
+      }),
+      window.electronAPI.onClearResponse(() => {
+        // Trigger clear response
+        if (onClearResponse) {
+          onClearResponse();
+        }
+      }),
       // Removed out of credits handler - unlimited credits in this version
     ]
 
@@ -135,7 +151,7 @@ const Queue: React.FC<QueueProps> = ({
   const handleOpenSettings = () => {
     window.electronAPI.openSettingsPortal();
   };
-  
+
   return (
     <div ref={contentRef} className={`bg-transparent w-1/2`}>
       <div className="px-4 py-3">
@@ -152,6 +168,8 @@ const Queue: React.FC<QueueProps> = ({
             credits={credits}
             currentLanguage={currentLanguage}
             setLanguage={setLanguage}
+            onTranscriptionComplete={onTranscriptionComplete}
+            onClearResponse={onClearResponse}
           />
         </div>
       </div>

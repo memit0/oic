@@ -1,6 +1,6 @@
 // file: src/components/SubscribedApp.tsx
 import { useQueryClient } from "@tanstack/react-query"
-import { useEffect, useRef, useState } from "react"
+import { useEffect, useRef, useState, useCallback } from "react"
 import Queue from "../_pages/Queue"
 import Solutions from "../_pages/Solutions"
 import { useToast } from "../contexts/toast"
@@ -18,6 +18,8 @@ const SubscribedApp: React.FC<SubscribedAppProps> = ({
 }) => {
   const queryClient = useQueryClient()
   const [view, setView] = useState<"queue" | "solutions" | "debug">("queue")
+  const [transcription, setTranscription] = useState<string>('')
+  const [answer, setAnswer] = useState<string>('')
   const containerRef = useRef<HTMLDivElement>(null)
   const { showToast } = useToast()
 
@@ -134,14 +136,51 @@ const SubscribedApp: React.FC<SubscribedAppProps> = ({
     return () => cleanupFunctions.forEach((fn) => fn())
   }, [view])
 
+  // Handle transcription completion from QueueCommands
+  const handleTranscriptionComplete = (newTranscription: string, newAnswer: string) => {
+    setTranscription(newTranscription)
+    setAnswer(newAnswer)
+    showToast('Success', 'Behavioral question answered successfully!', 'success')
+  }
+
+  // Handle clearing transcription and answer display only
+  const handleClearResponse = () => {
+    setTranscription('')
+    setAnswer('')
+  }
+
   return (
     <div ref={containerRef} className="min-h-0">
+      {/* Audio Results Display */}
+      {(transcription || answer) && (
+        <div className="bg-gray-900 border-b border-white/10 p-4 space-y-3">
+          {transcription && (
+            <div className="space-y-2">
+              <h4 className="text-white font-medium text-sm">Question Detected:</h4>
+              <div className="bg-gray-800 border border-gray-600 rounded p-3">
+                <p className="text-gray-300 text-sm">{transcription}</p>
+              </div>
+            </div>
+          )}
+
+          {answer && (
+            <div className="space-y-2">
+              <h4 className="text-white font-medium text-sm">Suggested Answer:</h4>
+              <div className="bg-gray-800 border border-gray-600 rounded p-3 max-h-64 overflow-y-auto">
+                <p className="text-gray-300 text-sm whitespace-pre-wrap">{answer}</p>
+              </div>
+            </div>
+          )}
+        </div>
+      )}
       {view === "queue" ? (
         <Queue
           setView={setView}
           credits={credits}
           currentLanguage={currentLanguage}
           setLanguage={setLanguage}
+          onTranscriptionComplete={handleTranscriptionComplete}
+          onClearResponse={handleClearResponse}
         />
       ) : view === "solutions" ? (
         <Solutions
